@@ -113,47 +113,92 @@ void Game::DrawGrid()
 float magic = 0.11f;
 void Game::Simulation()
 {
+	union { __m256 curpos_x_4; float a[8]; };
+	union { __m256 curpos_y_4; float b[8]; };
+	union { __m256 prevpos_x_4; float c[8]; };
+	union { __m256 prevpos_y_4; float d[8]; };
+	union { __m256 gravity; float e[8]; };
+
+	gravity = _mm256_set1_ps(0.003f);
+
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
 	{
 		// verlet integration; apply gravity
-		for (int y = 0; y < GRIDSIZE; y++) for (int x = 0; x < GRIDSIZE; x++)
-		{
-			float2 curpos = grid(x, y).pos, prevpos = grid(x, y).prev_pos;
-			grid(x, y).pos += (curpos - prevpos) + float2(0, 0.003f); // gravity
-			grid(x, y).prev_pos = curpos;
-			if (Rand(10) < 0.03f) grid(x, y).pos += float2(Rand(0.02f + magic), Rand(0.12f));
-		}
+		for (int y = 0; y < GRIDSIZE; y++) 
+			for (int x = 0; x < GRIDSIZE; x+=8)
+			{
+				curpos_x_4 = _mm256_load_ps(&grid(x, y).pos.x);
+				curpos_y_4 = _mm256_load_ps(&grid(x, y).pos.y);
+
+				prevpos_x_4 = _mm256_load_ps(&grid(x, y).prev_pos.x);
+				prevpos_y_4 = _mm256_load_ps(&grid(x, y).prev_pos.y);
+
+				__m256 newpos_x_4 = _mm256_add_ps(_mm256_sub_ps(curpos_x_4, prevpos_x_4), curpos_x_4);
+				__m256 newpos_y_4 = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(curpos_y_4, prevpos_y_4), gravity), curpos_y_4);
+
+				_mm256_store_ps(&grid(x, y).prev_pos.x, curpos_x_4);
+				_mm256_store_ps(&grid(x, y).prev_pos.y, curpos_y_4);
+
+				/*if (Rand(10) < 0.03f)
+				{
+					__m256 impulse_x_4 = _mm256_set_ps(Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic),
+						Rand(0.02f + magic));
+
+					__m256 impulse_y_4 = _mm256_set_ps(Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f),
+						Rand(0.12f));
+
+					newpos_x_4 = _mm256_add_ps(newpos_x_4, impulse_x_4);
+					newpos_y_4 = _mm256_add_ps(newpos_y_4, impulse_y_4);
+				}*/
+
+				_mm256_store_ps(&grid(x, y).pos.x, newpos_x_4);
+				_mm256_store_ps(&grid(x, y).pos.y, newpos_y_4);
+			}
 		magic += 0.0002f; // slowly increases the chance of anomalies
 		// apply constraints; 4 simulation steps: do not change this number.
 		for (int i = 0; i < 4; i++)
 		{
-			for (int y = 1; y < GRIDSIZE - 1; y++) for (int x = 1; x < GRIDSIZE - 1; x++)
-			{
-				float2 pointpos = grid(x, y).pos;
-				// use springs to four neighbouring points
-				for (int linknr = 0; linknr < 4; linknr++)
+			for (int y = 1; y < GRIDSIZE - 1; y++) 
+				for (int x = 1; x < GRIDSIZE - 1; x++)
 				{
-					Point& neighbour = grid(x + xoffset[linknr], y + yoffset[linknr]);
-					float distance = length(neighbour.pos - pointpos);
-					if (!isfinite(distance))
+					float2 pointpos = grid(x, y).pos;
+					// use springs to four neighbouring points
+					for (int linknr = 0; linknr < 4; linknr++)
 					{
-						// warning: this happens; sometimes vertex positions 'explode'.
-						continue;
+						Point& neighbour = grid(x + xoffset[linknr], y + yoffset[linknr]);
+						float distance = length(neighbour.pos - pointpos);
+						if (!isfinite(distance))
+						{
+							// warning: this happens; sometimes vertex positions 'explode'.
+							continue;
+						}
+						if (distance > grid(x, y).restlength[linknr])
+						{
+							// pull points together
+							float extra = distance / (grid(x, y).restlength[linknr]) - 1;
+							float2 dir = neighbour.pos - pointpos;
+							pointpos += extra * dir * 0.5f;
+							neighbour.pos -= extra * dir * 0.5f;
+						}
 					}
-					if (distance > grid(x, y).restlength[linknr])
-					{
-						// pull points together
-						float extra = distance / (grid(x, y).restlength[linknr]) - 1;
-						float2 dir = neighbour.pos - pointpos;
-						pointpos += extra * dir * 0.5f;
-						neighbour.pos -= extra * dir * 0.5f;
-					}
+					grid(x, y).pos = pointpos;
 				}
-				grid(x, y).pos = pointpos;
-			}
 			// fixed line of points is fixed.
-			for (int x = 0; x < GRIDSIZE; x++) grid(x, 0).pos = grid(x, 0).fix;
+			for (int x = 0; x < GRIDSIZE; x++) 
+				grid(x, 0).pos = grid(x, 0).fix;
 		}
 	}
 }
