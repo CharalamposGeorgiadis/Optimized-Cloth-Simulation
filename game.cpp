@@ -140,7 +140,7 @@ void Game::Simulation()
 				_mm256_store_ps(&grid(x, y).prev_pos.x, curpos_x_4);
 				_mm256_store_ps(&grid(x, y).prev_pos.y, curpos_y_4);
 
-				/*if (Rand(10) < 0.03f)
+				if (Rand(10) < 0.03f)
 				{
 					__m256 impulse_x_4 = _mm256_set_ps(Rand(0.02f + magic),
 						Rand(0.02f + magic),
@@ -162,7 +162,7 @@ void Game::Simulation()
 
 					newpos_x_4 = _mm256_add_ps(newpos_x_4, impulse_x_4);
 					newpos_y_4 = _mm256_add_ps(newpos_y_4, impulse_y_4);
-				}*/
+				}
 
 				_mm256_store_ps(&grid(x, y).pos.x, newpos_x_4);
 				_mm256_store_ps(&grid(x, y).pos.y, newpos_y_4);
