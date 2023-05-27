@@ -140,30 +140,27 @@ void Game::Simulation()
 	for (int steps = 0; steps < 3; steps++)
 	{
 		int index = 0;
-		int index2 = 0;
 		for (int i = 0; i < GRIDSIZE; i += 1)
 		{
 			for (int j = 0; j < GRIDSIZE; j += 8)
 			{
-				float pos_x[8], pos_y[8], prev_pos_x[8], prev_pos_y[8], fix_x[8], fix_y[8];
-
 				for (int k = 0; k < 8; k++)
 				{
 					auto point = grid(j + k, i);
-					pos_x[k] = point.pos.x;
-					pos_y[k] = point.pos.y;
-					prev_pos_x[k] = point.prev_pos.x;
-					prev_pos_y[k] = point.prev_pos.y;
-					fix_x[k] = point.fix.x;
-					fix_y[k] = point.fix.y;
+					simdPoints[index].px[k] = point.pos.x;
+					simdPoints[index].py[k] = point.pos.y;
+					simdPoints[index].ppx[k] = point.prev_pos.x;
+					simdPoints[index].ppy[k] = point.prev_pos.y;
+					simdPoints[index].fx[k] = point.fix.x;
+					simdPoints[index].fy[k] = point.fix.y;
 				}
 
-				simdPoints[index].pos_x = _mm256_load_ps(pos_x);
-				simdPoints[index].pos_y = _mm256_load_ps(pos_y);
-				simdPoints[index].prev_pos_x = _mm256_load_ps(prev_pos_x);
-				simdPoints[index].prev_pos_y = _mm256_load_ps(prev_pos_y);
-				simdPoints[index].fix_x = _mm256_load_ps(fix_x);
-				simdPoints[index].fix_y = _mm256_load_ps(fix_y);
+				simdPoints[index].pos_x = _mm256_load_ps(simdPoints[index].px);
+				simdPoints[index].pos_y = _mm256_load_ps(simdPoints[index].py);
+				simdPoints[index].prev_pos_x = _mm256_load_ps(simdPoints[index].ppx);
+				simdPoints[index].prev_pos_y = _mm256_load_ps(simdPoints[index].ppy);
+				simdPoints[index].fix_x = _mm256_load_ps(simdPoints[index].fx);
+				simdPoints[index].fix_y = _mm256_load_ps(simdPoints[index].fy);
 
 				__m256 newpos_x_8 = _mm256_add_ps(_mm256_sub_ps(simdPoints[index].pos_x, simdPoints[index].prev_pos_x), 
 					simdPoints[index].pos_x);
