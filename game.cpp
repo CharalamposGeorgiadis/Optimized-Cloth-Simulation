@@ -168,8 +168,11 @@ void Game::Simulation()
 					gravity), simdPoints[index].pos_y);
 
 
-				simdPoints[index].prev_pos_x = simdPoints[index].pos_x;
-				simdPoints[index].prev_pos_y = simdPoints[index].pos_y;
+				//simdPoints[index].prev_pos_x = simdPoints[index].pos_x;
+				//simdPoints[index].prev_pos_y = simdPoints[index].pos_y;
+
+				_mm256_store_ps(simdPoints[index].ppx, simdPoints[index].pos_x);
+				_mm256_store_ps(simdPoints[index].ppy, simdPoints[index].pos_y);
 
 
 				//__m256 rands = _mm256_set_ps(Rand(10) < 0.03f,
@@ -199,8 +202,10 @@ void Game::Simulation()
 				//	Rand(0.12f),
 				//	Rand(0.12f)), rands);
 
-				simdPoints[index].pos_x = newpos_x_8;//_mm256_add_ps(impulse_x_8, newpos_x_8);
-				simdPoints[index].pos_y = newpos_y_8;//_mm256_add_ps(impulse_y_8, newpos_y_8);
+				//simdPoints[index].pos_x = newpos_x_8;//_mm256_add_ps(impulse_x_8, newpos_x_8);
+				//simdPoints[index].pos_y = newpos_y_8;//_mm256_add_ps(impulse_y_8, newpos_y_8);
+				_mm256_store_ps(simdPoints[index].px, newpos_x_8);
+				_mm256_store_ps(simdPoints[index].py, newpos_y_8);
 
 				for (int k = 0; k < 8; k++)
 				{
