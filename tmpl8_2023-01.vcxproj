@@ -124,6 +124,7 @@
     <ClCompile Include="game.cpp" />
     <ClCompile Include="template\opencl.cpp" />
     <ClCompile Include="template\opengl.cpp" />
+    <ClCompile Include="template\simdxorshift128plus.cpp" />
     <ClCompile Include="template\sprite.cpp" />
     <ClCompile Include="template\surface.cpp" />
     <ClCompile Include="template\template.cpp">
@@ -141,6 +142,7 @@
     <ClInclude Include="template\opencl.h" />
     <ClInclude Include="template\opengl.h" />
     <ClInclude Include="template\precomp.h" />
+    <ClInclude Include="template\simdxorshift128plus.h" />
     <ClInclude Include="template\sprite.h" />
     <ClInclude Include="template\surface.h" />
     <ClInclude Include="template\tmpl8math.h" />

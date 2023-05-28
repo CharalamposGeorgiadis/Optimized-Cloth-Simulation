@@ -20,6 +20,7 @@
     <ClCompile Include="template\tmpl8math.cpp">
       <Filter>template</Filter>
     </ClCompile>
+    <ClCompile Include="template\simdxorshift128plus.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="template\common.h">
@@ -47,6 +48,7 @@
     <ClInclude Include="template\tmpl8math.h">
       <Filter>template</Filter>
     </ClInclude>
+    <ClInclude Include="template\simdxorshift128plus.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="template\LICENSE">

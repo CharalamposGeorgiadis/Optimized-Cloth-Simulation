@@ -19,6 +19,7 @@
 // see: https://stackoverflow.com/a/11228864/2844473
 #include <immintrin.h>
 
+#include "simdxorshift128plus.h"
 // basic types
 typedef unsigned char uchar;
 typedef unsigned int uint;
