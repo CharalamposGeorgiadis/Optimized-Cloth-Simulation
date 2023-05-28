@@ -134,88 +134,87 @@ void Game::DrawGrid()
 float magic = 0.11f;
 __m256 gravity = _mm256_set1_ps(0.003f);
 
+static union { __m256 pos_x_8; float px[8]; };
+static union { __m256 pos_y_8; float py[8]; };
+
+static union { __m256 prev_pos_x_8; float ppx[8]; };
+static union { __m256 prev_pos_y_8; float ppy[8]; };
+
+static union { __m256 fix_x_8; float fx[8]; };
+static union { __m256 fix_y_8; float fy[8]; };
+
 void Game::Simulation()
 {
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
 	{
-		int index = 0;
-		for (int i = 0; i < GRIDSIZE; i += 1)
+		for (int i = 0; i < GRIDSIZE; i++)
 		{
 			for (int j = 0; j < GRIDSIZE; j += 8)
 			{
-				for (int k = 0; k < 8; k++)
-				{
-					auto point = grid(j + k, i);
-					simdPoints[index].px[k] = point.pos.x;
-					simdPoints[index].py[k] = point.pos.y;
-					simdPoints[index].ppx[k] = point.prev_pos.x;
-					simdPoints[index].ppy[k] = point.prev_pos.y;
-					simdPoints[index].fx[k] = point.fix.x;
-					simdPoints[index].fy[k] = point.fix.y;
-				}
+				pos_x_8 = _mm256_set_ps(
+					grid(i, j + 7).pos.x, grid(i, j + 6).pos.x, grid(i, j + 5).pos.x, grid(i, j + 4).pos.x,
+					grid(i, j + 3).pos.x, grid(i, j + 2).pos.x, grid(i, j + 1).pos.x, grid(i, j).pos.x);
 
-				simdPoints[index].pos_x = _mm256_load_ps(simdPoints[index].px);
-				simdPoints[index].pos_y = _mm256_load_ps(simdPoints[index].py);
-				simdPoints[index].prev_pos_x = _mm256_load_ps(simdPoints[index].ppx);
-				simdPoints[index].prev_pos_y = _mm256_load_ps(simdPoints[index].ppy);
-				simdPoints[index].fix_x = _mm256_load_ps(simdPoints[index].fx);
-				simdPoints[index].fix_y = _mm256_load_ps(simdPoints[index].fy);
+				pos_y_8 = _mm256_set_ps(
+					grid(i, j + 7).pos.y, grid(i, j + 6).pos.y, grid(i, j + 5).pos.y, grid(i, j + 4).pos.y,
+					grid(i, j + 3).pos.y, grid(i, j + 2).pos.y, grid(i, j + 1).pos.y, grid(i, j).pos.y);
 
-				__m256 newpos_x_8 = _mm256_add_ps(_mm256_sub_ps(simdPoints[index].pos_x, simdPoints[index].prev_pos_x), 
-					simdPoints[index].pos_x);
-				__m256 newpos_y_8 = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(simdPoints[index].pos_y, simdPoints[index].prev_pos_y), 
-					gravity), simdPoints[index].pos_y);
+				prev_pos_x_8 = _mm256_set_ps(
+					grid(i, j + 7).prev_pos.x, grid(i, j + 6).prev_pos.x, grid(i, j + 5).prev_pos.x, grid(i, j + 4).prev_pos.x,
+					grid(i, j + 3).prev_pos.x, grid(i, j + 2).prev_pos.x, grid(i, j + 1).prev_pos.x, grid(i, j).prev_pos.x);
+
+				prev_pos_y_8 = _mm256_set_ps(
+					grid(i, j + 7).prev_pos.y, grid(i, j + 6).prev_pos.y, grid(i, j + 5).prev_pos.y, grid(i, j + 4).prev_pos.y,
+					grid(i, j + 3).prev_pos.y, grid(i, j + 2).prev_pos.y, grid(i, j + 1).prev_pos.y, grid(i, j).prev_pos.y);
 
 
-				//simdPoints[index].prev_pos_x = simdPoints[index].pos_x;
-				//simdPoints[index].prev_pos_y = simdPoints[index].pos_y;
+				__m256 newpos_x_8 = _mm256_add_ps(_mm256_sub_ps(pos_x_8, prev_pos_x_8), pos_x_8);
+				__m256 newpos_y_8 = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(pos_y_8, prev_pos_y_8), gravity), pos_y_8);
 
-				_mm256_store_ps(simdPoints[index].ppx, simdPoints[index].pos_x);
-				_mm256_store_ps(simdPoints[index].ppy, simdPoints[index].pos_y);
+				__m256 rands = _mm256_set_ps(Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f,
+					Rand(10) < 0.03f);
 
+				__m256 impulse_x_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic),
+					Rand(0.02f + magic)), rands);
 
-				//__m256 rands = _mm256_set_ps(Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f,
-				//	Rand(10) < 0.03f);
+				__m256 impulse_y_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f),
+					Rand(0.12f)), rands);
 
-				//__m256 impulse_x_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic),
-				//	Rand(0.02f + magic)), rands);
+				newpos_x_8 = _mm256_add_ps(impulse_x_8, newpos_x_8);
+				newpos_y_8 = _mm256_add_ps(impulse_y_8, newpos_y_8);
 
-				//__m256 impulse_y_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f),
-				//	Rand(0.12f)), rands);
+				_mm256_store_ps(ppx, pos_x_8);
+				_mm256_store_ps(ppy, pos_y_8);
+				_mm256_store_ps(px, newpos_x_8);
+				_mm256_store_ps(py, newpos_y_8);
 
-				//simdPoints[index].pos_x = newpos_x_8;//_mm256_add_ps(impulse_x_8, newpos_x_8);
-				//simdPoints[index].pos_y = newpos_y_8;//_mm256_add_ps(impulse_y_8, newpos_y_8);
-				_mm256_store_ps(simdPoints[index].px, newpos_x_8);
-				_mm256_store_ps(simdPoints[index].py, newpos_y_8);
 
 				for (int k = 0; k < 8; k++)
 				{
-					grid(j + k, i).pos.x = simdPoints[index].px[k];
-					grid(j + k, i).pos.y = simdPoints[index].py[k];
-					grid(j + k, i).prev_pos.x = simdPoints[index].ppx[k];
-					grid(j + k, i).prev_pos.y = simdPoints[index].ppy[k];
+					grid(i, j + k).pos.x = px[k];
+					grid(i, j + k).pos.y = py[k];
+					grid(i, j + k).prev_pos.x = ppx[k];
+					grid(i, j + k).prev_pos.y = ppy[k];
 				}
-
-				index += 1;
 			}
 		}	
 
