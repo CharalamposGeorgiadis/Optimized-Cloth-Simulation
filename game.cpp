@@ -26,7 +26,7 @@
 // 3. GPGPU, part 1: modify Game::Simulation so that it sends the cloth data
 //    to the GPU, and execute lines 119 to 126 on the GPU. After this, bring
 //    back the cloth data to the CPU and execute the remainder of the Verlet
-//    simulation code. You receive 2 points if the code works correctly;
+//    simulation code. You receive 2 points if the code *works* correctly;
 //    note that this is expected to be slower due to the data transfers.
 // 4. GPGPU, part 2: execute the full Game::Simulation function on the GPU.
 //    You receive 4 additional points if this yields a correct simulation
@@ -44,30 +44,9 @@ struct Point
 	float restlength[4];	// initial distance to neighbours
 };
 
-struct PointSIMD
-{
-	union { __m256 pos_x; float px[8]; };
-	union { __m256 pos_y; float py[8]; };
-
-	union { __m256 prev_pos_x; float ppx[8]; };
-	union { __m256 prev_pos_y; float ppy[8]; };
-
-
-	union { __m256 fix_x; float fx[8]; };
-	union { __m256 fix_y; float fy[8]; };
-
-	__m256 restlength[4]; // ??????? 
-};
-
 // grid access convenience
 Point* pointGrid = new Point[GRIDSIZE * GRIDSIZE];
 Point& grid(const uint x, const uint y) { return pointGrid[x + y * GRIDSIZE]; }
-
-#define SIMDSIZE GRIDSIZE * GRIDSIZE / 8
-
-#define HALFSIMDSIZE GRIDSIZE / 8
-
-PointSIMD* simdPoints = new PointSIMD[SIMDSIZE];
 
 // grid offsets for the neighbours via the four links
 int xoffset[4] = { 1, -1, 0, 0 }, yoffset[4] = { 0, 0, 1, -1 };
@@ -132,143 +111,54 @@ void Game::DrawGrid()
 // when using SIMD, this will only work if the two vertices are not
 // operated upon simultaneously (in a vector register, or in a warp).
 float magic = 0.11f;
-__m256 gravity = _mm256_set1_ps(0.003f);
-
-static union { __m256 pos_x_8; float px[8]; };
-static union { __m256 pos_y_8; float py[8]; };
-
-static union { __m256 prev_pos_x_8; float ppx[8]; };
-static union { __m256 prev_pos_y_8; float ppy[8]; };
-
-static union { __m256 fix_x_8; float fx[8]; };
-static union { __m256 fix_y_8; float fy[8]; };
-
 void Game::Simulation()
 {
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
 	{
-		for (int i = 0; i < GRIDSIZE; i++)
-		{
-			for (int j = 0; j < GRIDSIZE; j += 8)
-			{
-				pos_x_8 = _mm256_set_ps(
-					grid(i, j + 7).pos.x, grid(i, j + 6).pos.x, grid(i, j + 5).pos.x, grid(i, j + 4).pos.x,
-					grid(i, j + 3).pos.x, grid(i, j + 2).pos.x, grid(i, j + 1).pos.x, grid(i, j).pos.x);
-
-				pos_y_8 = _mm256_set_ps(
-					grid(i, j + 7).pos.y, grid(i, j + 6).pos.y, grid(i, j + 5).pos.y, grid(i, j + 4).pos.y,
-					grid(i, j + 3).pos.y, grid(i, j + 2).pos.y, grid(i, j + 1).pos.y, grid(i, j).pos.y);
-
-				prev_pos_x_8 = _mm256_set_ps(
-					grid(i, j + 7).prev_pos.x, grid(i, j + 6).prev_pos.x, grid(i, j + 5).prev_pos.x, grid(i, j + 4).prev_pos.x,
-					grid(i, j + 3).prev_pos.x, grid(i, j + 2).prev_pos.x, grid(i, j + 1).prev_pos.x, grid(i, j).prev_pos.x);
-
-				prev_pos_y_8 = _mm256_set_ps(
-					grid(i, j + 7).prev_pos.y, grid(i, j + 6).prev_pos.y, grid(i, j + 5).prev_pos.y, grid(i, j + 4).prev_pos.y,
-					grid(i, j + 3).prev_pos.y, grid(i, j + 2).prev_pos.y, grid(i, j + 1).prev_pos.y, grid(i, j).prev_pos.y);
-
-
-				__m256 newpos_x_8 = _mm256_add_ps(_mm256_sub_ps(pos_x_8, prev_pos_x_8), pos_x_8);
-				__m256 newpos_y_8 = _mm256_add_ps(_mm256_add_ps(_mm256_sub_ps(pos_y_8, prev_pos_y_8), gravity), pos_y_8);
-
-				__m256 rands = _mm256_set_ps(Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f,
-					Rand(10) < 0.03f);
-
-				__m256 impulse_x_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic),
-					Rand(0.02f + magic)), rands);
-
-				__m256 impulse_y_8 = _mm256_mul_ps(_mm256_set_ps(Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f),
-					Rand(0.12f)), rands);
-
-				newpos_x_8 = _mm256_add_ps(impulse_x_8, newpos_x_8);
-				newpos_y_8 = _mm256_add_ps(impulse_y_8, newpos_y_8);
-
-				_mm256_store_ps(ppx, pos_x_8);
-				_mm256_store_ps(ppy, pos_y_8);
-				_mm256_store_ps(px, newpos_x_8);
-				_mm256_store_ps(py, newpos_y_8);
-
-
-				for (int k = 0; k < 8; k++)
-				{
-					grid(i, j + k).pos.x = px[k];
-					grid(i, j + k).pos.y = py[k];
-					grid(i, j + k).prev_pos.x = ppx[k];
-					grid(i, j + k).prev_pos.y = ppy[k];
-				}
-			}
-		}	
-
-		//for (int y = 0; y < GRIDSIZE; y++)
-		//	for (int x = 0; x < GRIDSIZE; x++)
-		//	{
-		//		float2 curpos = grid(x, y).pos, prevpos = grid(x, y).prev_pos;
-		//		grid(x, y).pos += (curpos - prevpos) + float2(0, 0.003f); // gravity
-		//		grid(x, y).prev_pos = curpos;
-		//		if (Rand(10) < 0.03f) grid(x, y).pos += float2(Rand(0.02f + magic), Rand(0.12f));
-		//	}
-
-
 		// verlet integration; apply gravity
-		//for (int y = 0; y < GRIDSIZE; y++) 
-		//	for (int x = 0; x < GRIDSIZE; x++)
-		//{
-		//	float2 curpos = grid( x, y ).pos, prevpos = grid( x, y ).prev_pos;
-		//	grid( x, y ).pos += (curpos - prevpos) + float2( 0, 0.003f ); // gravity
-		//	grid( x, y ).prev_pos = curpos;
-		//	if (Rand( 10 ) < 0.03f) grid( x, y ).pos += float2( Rand( 0.02f + magic ), Rand( 0.12f ) );
-		//}
-
-
+		for (int y = 0; y < GRIDSIZE; y++)
+			for (int x = 0; x < GRIDSIZE; x++)
+			{
+				float2 curpos = grid(x, y).pos, prevpos = grid(x, y).prev_pos;
+				grid(x, y).pos += (curpos - prevpos) + float2(0, 0.003f); // gravity
+				grid(x, y).prev_pos = curpos;
+				if (Rand(10) < 0.03f)
+					grid(x, y).pos += float2(Rand(0.02f + magic), Rand(0.12f));
+			}
 		magic += 0.0002f; // slowly increases the chance of anomalies
+
 		// apply constraints; 4 simulation steps: do not change this number.
 		for (int i = 0; i < 4; i++)
 		{
-			for (int y = 1; y < GRIDSIZE - 1; y++) for (int x = 1; x < GRIDSIZE - 1; x++)
-			{
-				float2 pointpos = grid(x, y).pos;
-				// use springs to four neighbouring points
-				for (int linknr = 0; linknr < 4; linknr++)
+			for (int y = 1; y < GRIDSIZE - 1; y++)
+				for (int x = 1; x < GRIDSIZE - 1; x++)
 				{
-					Point& neighbour = grid(x + xoffset[linknr], y + yoffset[linknr]);
-					float distance = length(neighbour.pos - pointpos);
-					if (!isfinite(distance))
+					float2 pointpos = grid(x, y).pos;
+					// use springs to four neighbouring points
+					for (int linknr = 0; linknr < 4; linknr++)
 					{
-						// warning: this happens; sometimes vertex positions 'explode'.
-						continue;
+						Point& neighbour = grid(x + xoffset[linknr], y + yoffset[linknr]);
+						float distance = length(neighbour.pos - pointpos);
+						if (!isfinite(distance))
+						{
+							// warning: this happens; sometimes vertex positions 'explode'.
+							continue;
+						}
+						if (distance > grid(x, y).restlength[linknr])
+						{
+							// pull points together
+							float extra = distance / (grid(x, y).restlength[linknr]) - 1;
+							float2 dir = neighbour.pos - pointpos;
+							pointpos += extra * dir * 0.5f;
+							neighbour.pos -= extra * dir * 0.5f;
+						}
 					}
-					if (distance > grid(x, y).restlength[linknr])
-					{
-						// pull points together
-						float extra = distance / (grid(x, y).restlength[linknr]) - 1;
-						float2 dir = neighbour.pos - pointpos;
-						pointpos += extra * dir * 0.5f;
-						neighbour.pos -= extra * dir * 0.5f;
-					}
+					grid(x, y).pos = pointpos;
 				}
-				grid(x, y).pos = pointpos;
-			}
 			// fixed line of points is fixed.
-			for (int x = 0; x < GRIDSIZE; x++) grid(x, 0).pos = grid(x, 0).fix;
+			for (int x = 0; x < GRIDSIZE; x++)
+				grid(x, 0).pos = grid(x, 0).fix;
 		}
 	}
 }
