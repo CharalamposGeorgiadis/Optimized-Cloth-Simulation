@@ -44,16 +44,40 @@ struct Point
 	float restlength[4];	// initial distance to neighbours
 };
 
+struct Rands {
+	int rand1;
+	float2 rand2;
+};
+
+
+
 // grid access convenience
 Point* pointGrid = new Point[GRIDSIZE * GRIDSIZE];
+Rands* rands = new Rands[GRIDSIZE * GRIDSIZE];
+
 Point& grid(const uint x, const uint y) { return pointGrid[x + y * GRIDSIZE]; }
 
 // grid offsets for the neighbours via the four links
 int xoffset[4] = { 1, -1, 0, 0 }, yoffset[4] = { 0, 0, 1, -1 };
 
+
+Kernel* kernel;
+Buffer* buffer;
+Buffer* randsBuffer;
+
 // initialization
 void Game::Init()
 {
+	kernel = new Kernel("cl\\kernels.cl", "render");
+
+	buffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, buffer->WRITEONLY);
+
+	randsBuffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, buffer->READONLY);
+
+	//for (int i = 0; i < GRIDSIZE*GRIDSIZE; i++) {
+	//	cout << pointGrid[i].pos.x << endl;
+	//}
+
 	// create the cloth
 	for (int y = 0; y < GRIDSIZE; y++) for (int x = 0; x < GRIDSIZE; x++)
 	{
@@ -113,19 +137,50 @@ void Game::DrawGrid()
 float magic = 0.11f;
 void Game::Simulation()
 {
+
+
+
+
+	//buffer->CopyFromDevice();
+
+	//auto hostBuffer = buffer->GetHostPtr();
+
+
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
 	{
+
+		//for (int y = 0; y < GRIDSIZE; y++)
+		//	for (int x = 0; x < GRIDSIZE; x++)
+		//	{
+		//		Rands r;
+		//		r.rand1 = Rand(10) < 0.03f;
+		//		r.rand2 = float2(Rand(0.02f + magic), Rand(0.12f));
+
+		//		rands[x + y * GRIDSIZE] = r;
+		//	}
+
+
+		clEnqueueWriteBuffer(kernel->GetQueue(), *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
+		//clEnqueueWriteBuffer(kernel->GetQueue(), *(randsBuffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, 0, nullptr, nullptr);
+
+		kernel->SetArguments(buffer, magic);
+
+		kernel->Run(GRIDSIZE * GRIDSIZE);
+
+		buffer->CopyFromDevice();
+
+
 		// verlet integration; apply gravity
-		for (int y = 0; y < GRIDSIZE; y++)
-			for (int x = 0; x < GRIDSIZE; x++)
-			{
-				float2 curpos = grid(x, y).pos, prevpos = grid(x, y).prev_pos;
-				grid(x, y).pos += (curpos - prevpos) + float2(0, 0.003f); // gravity
-				grid(x, y).prev_pos = curpos;
-				if (Rand(10) < 0.03f)
-					grid(x, y).pos += float2(Rand(0.02f + magic), Rand(0.12f));
-			}
+		//for (int y = 0; y < GRIDSIZE; y++)
+		//	for (int x = 0; x < GRIDSIZE; x++)
+		//	{
+		//		float2 curpos = grid(x, y).pos, prevpos = grid(x, y).prev_pos;
+		//		grid(x, y).pos += (curpos - prevpos) + float2(0, 0.003f); // gravity
+		//		grid(x, y).prev_pos = curpos;
+		//		if (Rand(10) < 0.03f)
+		//			grid(x, y).pos += float2(Rand(0.02f + magic), Rand(0.12f));
+		//	}
 		magic += 0.0002f; // slowly increases the chance of anomalies
 
 		// apply constraints; 4 simulation steps: do not change this number.
@@ -163,6 +218,7 @@ void Game::Simulation()
 	}
 }
 
+
 void Game::Tick(float a_DT)
 {
 	// update the simulation
@@ -182,4 +238,5 @@ void Game::Tick(float a_DT)
 	screen->Print(t, 2, SCRHEIGHT - 24, 0xffffff);
 	sprintf(t, "                       rendering: %5.1f ms", elapsed2 * 1000);
 	screen->Print(t, 2, SCRHEIGHT - 14, 0xffffff);
+
 }
