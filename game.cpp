@@ -54,14 +54,12 @@ int xoffset[4] = { 1, -1, 0, 0 }, yoffset[4] = { 0, 0, 1, -1 };
 
 Kernel* kernel_render;
 Kernel* kernel_constraints;
-Kernel* kernel_fix;
 
 Buffer* buffer;
 Buffer* randsBuffer;
 
 cl_command_queue queue_render;
 cl_command_queue queue_constraints;
-cl_command_queue queue_fix;
 
 struct Rands {
 	float rand10;
@@ -76,14 +74,12 @@ void Game::Init()
 {
 	kernel_render = new Kernel("cl\\kernels.cl", "render");
 	kernel_constraints = new Kernel("cl\\kernels.cl", "constraints");
-	kernel_fix = new Kernel("cl\\kernels.cl", "fix");
 
 	buffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, buffer->WRITEONLY);
 	randsBuffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, randsBuffer->READONLY);
 
 	queue_render = kernel_render->GetQueue();
 	queue_constraints = kernel_constraints->GetQueue();
-	queue_fix = kernel_fix->GetQueue();
 
 	// create the cloth
 	for (int y = 0; y < GRIDSIZE; y++) 
@@ -149,7 +145,6 @@ void Game::Simulation()
 	clEnqueueWriteBuffer(queue_render, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
 
 	kernel_constraints->SetArguments(buffer);
-	kernel_fix->SetArguments(buffer);
 
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
@@ -198,8 +193,6 @@ void Game::Simulation()
 			//		grid(x, y).pos = pointpos;
 			//	}
 			// fixed line of points is fixed.
-
-			kernel_fix->Run(GRIDSIZE);
 
 			/*for (int x = 0; x < GRIDSIZE; x++)
 				grid(x, 0).pos = grid(x, 0).fix;*/
