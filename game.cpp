@@ -161,12 +161,30 @@ void Game::Simulation()
 		kernel_render->SetArguments(buffer, magic, randsBuffer);
 		kernel_render->Run(GRIDSIZE * GRIDSIZE);
 
+		buffer->CopyFromDevice();
+
 		magic += 0.0002f; // slowly increases the chance of anomalies
 
 		// apply constraints; 4 simulation steps: do not change this number.
 		for (int i = 0; i < 4; i++)
 		{
+			clEnqueueWriteBuffer(queue_constraints, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
+			
+			kernel_constraints->SetArguments(buffer, 0);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);	
+
+			kernel_constraints->SetArguments(buffer, 1);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			kernel_constraints->SetArguments(buffer, 2);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			kernel_constraints->SetArguments(buffer, 3);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			buffer->CopyFromDevice();
+
+			//buffer->CopyFromDevice();
 			//for (int y = 1; y < GRIDSIZE - 1; y++)
 			//	for (int x = 1; x < GRIDSIZE - 1; x++)
 			//	{
@@ -194,8 +212,8 @@ void Game::Simulation()
 			//	}
 			// fixed line of points is fixed.
 
-			/*for (int x = 0; x < GRIDSIZE; x++)
-				grid(x, 0).pos = grid(x, 0).fix;*/
+			//for (int x = 0; x < GRIDSIZE; x++)
+			//	grid(x, 0).pos = grid(x, 0).fix;
 		}
 	}
 	buffer->CopyFromDevice();
