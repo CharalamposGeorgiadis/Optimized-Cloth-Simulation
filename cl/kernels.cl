@@ -12,31 +12,70 @@ typedef struct Point
     float restlength[4];
 } Point;
 
-
-typedef struct Rands {
-	int rand1;
-	float2 rand2; 
+typedef struct Rands 
+{
+	float rand10;
+	float rand002;
+	float rand012;
 } Rands;
 
-__kernel void render( __global Point* points, float magic)
+int xoffset[4] = { 1, -1, 0, 0 };
+int yoffset[4] = { 0, 0, 1, -1 };
+
+
+__kernel void render( __global Point* points, float magic, __global Rands* rands)
 {
-	// plot a pixel to outimg
 	const int p = get_global_id( 0 );
 	const int x = p % GRIDSIZE;
 	const int y = p / GRIDSIZE; 
 	const int index = x + y * GRIDSIZE;
-	const int seed =  WangHash((p+1)*17);
 
 	float2 curpos = points[index].pos, prevpos = points[index].prev_pos;
 	points[index].pos += (curpos - prevpos) + (float2)(0, 0.003f); // gravity
 
 	points[index].prev_pos = curpos;
 
-	int rand1 = (int)((RandomFloat(&seed) * 10.0f) < 0.03f);
-	float2 rand2 = (float2)(RandomFloat(&seed) * (0.02f + magic), RandomFloat(&seed) * 0.12f);
+	int rand1 = (int)(rands[index].rand10 < 0.03f);
+	float2 rand2 = (float2)(rands[index].rand002, rands[index].rand012);
 
-	points[index].pos += rand1 * rand2;
-
+	points[index].pos += (rand1 * rand2);
 }
+
+__kernel void constraints(__global Point* points)
+{
+	const int p = get_global_id( 0 );
+	const int x = p % (GRIDSIZE - 2) + 1;
+	const int y = p / (GRIDSIZE - 2) + 1; 
+	const int index = x + y * GRIDSIZE;
+
+	float2 pointpos = points[index].pos;
+	for (int linknr = 0; linknr < 4; linknr++)
+	{
+		int neighbor_index = x + xoffset[linknr] + (y + yoffset[linknr]) * GRIDSIZE;
+		Point neighbor = points[neighbor_index];
+		float distance = length(neighbor.pos - pointpos);
+
+		if (!isfinite(distance))
+			continue;
+		if (distance > points[index].restlength[linknr])
+		{
+			float extra = distance / points[index].restlength[linknr] - 1;
+			float2 dir = neighbor.pos - pointpos;
+
+			pointpos += extra * dir * 0.5f;
+			points[neighbor_index].pos -= extra * dir * 0.5f;
+
+
+		}
+	}
+	points[index].pos = pointpos;
+}
+
+__kernel void fix(__global Point* points)
+{
+	const int x = get_global_id( 0 );
+	points[x].pos = points[x].fix;
+}
+
 
 // EOF
