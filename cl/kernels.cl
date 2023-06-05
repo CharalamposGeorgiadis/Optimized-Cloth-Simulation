@@ -41,26 +41,34 @@ __kernel void render( __global Point* points, float magic, __global Rands* rands
 	points[index].pos += (rand1 * rand2);
 }
 
-__kernel void constraints(__global Point* points, int i)
+__kernel void constraints(__global Point* points, int i, int even)
 {
 	const int p = get_global_id( 0 );
 	const int x = p % (GRIDSIZE - 2) + 1;
 	const int y = p / (GRIDSIZE - 2) + 1; 
 	const int index = x + y * GRIDSIZE;
 
+	bool isEven = (index % 2 == 0);
+	if (even == 0 && !isEven)
+        return;
+    if (even == 1 && isEven)
+        return;
+
 	int neighbor_index = x + xoffset[i] + (y + yoffset[i]) * GRIDSIZE;
 	Point neighbor = points[neighbor_index];
 	float distance = length(neighbor.pos - points[index].pos);
 
-	if (!isfinite(distance))
-		return;
+	int if_1 = (int)isfinite(distance);
+
 	if (distance > points[index].restlength[i])
 	{
 		float extra = distance / points[index].restlength[i] - 1;
 		float2 dir = neighbor.pos - points[index].pos;
 
-		points[index].pos += extra * dir * 0.5f;
-		points[neighbor_index].pos -= extra * dir * 0.5f;
+		float2 mult = if_1 * extra * dir * 0.5f;
+
+		points[index].pos += mult;
+		points[neighbor_index].pos -= mult;
 	}
 }
 

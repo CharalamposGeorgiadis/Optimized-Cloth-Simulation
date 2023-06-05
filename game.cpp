@@ -166,48 +166,30 @@ void Game::Simulation()
 		// apply constraints; 4 simulation steps: do not change this number.
 		for (int i = 0; i < 4; i++)
 		{
-			kernel_constraints->SetArguments(buffer, 0);
-			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);	
-
-			kernel_constraints->SetArguments(buffer, 1);
+			kernel_constraints->SetArguments(buffer, 0, 1);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
 
-			kernel_constraints->SetArguments(buffer, 2);
+			kernel_constraints->SetArguments(buffer, 1, 1);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
 
-			kernel_constraints->SetArguments(buffer, 3);
+			kernel_constraints->SetArguments(buffer, 2, 1);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
 
-			//buffer->CopyFromDevice();
-			//for (int y = 1; y < GRIDSIZE - 1; y++)
-			//	for (int x = 1; x < GRIDSIZE - 1; x++)
-			//	{
-			//		float2 pointpos = grid(x, y).pos;
-			//		// use springs to four neighbouring points
-			//		for (int linknr = 0; linknr < 4; linknr++)
-			//		{
-			//			Point& neighbour = grid(x + xoffset[linknr], y + yoffset[linknr]);
-			//			float distance = length(neighbour.pos - pointpos);
-			//			if (!isfinite(distance))
-			//			{
-			//				// warning: this happens; sometimes vertex positions 'explode'.
-			//				continue;
-			//			}
-			//			if (distance > grid(x, y).restlength[linknr])
-			//			{
-			//				// pull points together
-			//				float extra = distance / (grid(x, y).restlength[linknr]) - 1;
-			//				float2 dir = neighbour.pos - pointpos;
-			//				pointpos += extra * dir * 0.5f;
-			//				neighbour.pos -= extra * dir * 0.5f;
-			//			}
-			//		}
-			//		grid(x, y).pos = pointpos;
-			//	}
-			// fixed line of points is fixed.
+			kernel_constraints->SetArguments(buffer, 3, 1);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
 
-			//for (int x = 0; x < GRIDSIZE; x++)
-			//	grid(x, 0).pos = grid(x, 0).fix;
+			kernel_constraints->SetArguments(buffer, 0, 0);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			kernel_constraints->SetArguments(buffer, 1, 0);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			kernel_constraints->SetArguments(buffer, 2, 0);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
+			kernel_constraints->SetArguments(buffer, 3, 0);
+			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
+
 			kernel_fix->SetArguments(buffer);
 			kernel_fix->Run(GRIDSIZE);
 		}
