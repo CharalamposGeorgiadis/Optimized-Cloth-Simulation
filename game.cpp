@@ -54,12 +54,12 @@ int xoffset[4] = { 1, -1, 0, 0 }, yoffset[4] = { 0, 0, 1, -1 };
 
 Kernel* kernel_render;
 Kernel* kernel_constraints;
+Kernel* kernel_fix;
 
 Buffer* buffer;
 Buffer* randsBuffer;
 
-cl_command_queue queue_render;
-cl_command_queue queue_constraints;
+cl_command_queue queue;
 
 struct Rands {
 	float rand10;
@@ -74,12 +74,12 @@ void Game::Init()
 {
 	kernel_render = new Kernel("cl\\kernels.cl", "render");
 	kernel_constraints = new Kernel("cl\\kernels.cl", "constraints");
+	kernel_fix = new Kernel("cl\\kernels.cl", "fix");
 
 	buffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, buffer->WRITEONLY);
 	randsBuffer = new Buffer(GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, randsBuffer->READONLY);
 
-	queue_render = kernel_render->GetQueue();
-	queue_constraints = kernel_constraints->GetQueue();
+	queue = kernel_render->GetQueue();
 
 	// create the cloth
 	for (int y = 0; y < GRIDSIZE; y++) 
@@ -142,7 +142,7 @@ void Game::DrawGrid()
 float magic = 0.11f;
 void Game::Simulation()
 {
-	clEnqueueWriteBuffer(queue_render, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
+	clEnqueueWriteBuffer(queue, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
 
 	kernel_constraints->SetArguments(buffer);
 
@@ -157,19 +157,15 @@ void Game::Simulation()
 				rands[x + y * GRIDSIZE].rand012 = Rand(0.12f);
 			}
 
-		clEnqueueWriteBuffer(queue_render, *(randsBuffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, 0, nullptr, nullptr);
+		clEnqueueWriteBuffer(queue, *(randsBuffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Rands), rands, 0, nullptr, nullptr);
 		kernel_render->SetArguments(buffer, magic, randsBuffer);
 		kernel_render->Run(GRIDSIZE * GRIDSIZE);
-
-		buffer->CopyFromDevice();
 
 		magic += 0.0002f; // slowly increases the chance of anomalies
 
 		// apply constraints; 4 simulation steps: do not change this number.
 		for (int i = 0; i < 4; i++)
 		{
-			clEnqueueWriteBuffer(queue_constraints, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
-			
 			kernel_constraints->SetArguments(buffer, 0);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);	
 
@@ -181,8 +177,6 @@ void Game::Simulation()
 
 			kernel_constraints->SetArguments(buffer, 3);
 			kernel_constraints->Run(GRIDSIZE * GRIDSIZE);
-
-			buffer->CopyFromDevice();
 
 			//buffer->CopyFromDevice();
 			//for (int y = 1; y < GRIDSIZE - 1; y++)
@@ -214,6 +208,8 @@ void Game::Simulation()
 
 			//for (int x = 0; x < GRIDSIZE; x++)
 			//	grid(x, 0).pos = grid(x, 0).fix;
+			kernel_fix->SetArguments(buffer);
+			kernel_fix->Run(GRIDSIZE);
 		}
 	}
 	buffer->CopyFromDevice();

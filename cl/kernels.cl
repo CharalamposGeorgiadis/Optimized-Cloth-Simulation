@@ -62,7 +62,11 @@ __kernel void constraints(__global Point* points, int i)
 		points[index].pos += extra * dir * 0.5f;
 		points[neighbor_index].pos -= extra * dir * 0.5f;
 	}
+}
 
+__kernel void fix(__global Point* points)
+{
+	const int x = get_global_id( 0 );
 	points[x].pos = points[x].fix;
 }
 
