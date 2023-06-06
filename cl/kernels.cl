@@ -22,6 +22,8 @@ typedef struct Rands
 int xoffset[4] = { 1, -1, 0, 0 };
 int yoffset[4] = { 0, 0, 1, -1 };
 
+float2 gravity = (float2)(0, 0.003f);
+
 
 __kernel void render( __global Point* points, float magic, __global Rands* rands)
 {
@@ -30,8 +32,9 @@ __kernel void render( __global Point* points, float magic, __global Rands* rands
 	const int y = p / GRIDSIZE; 
 	const int index = x + y * GRIDSIZE;
 
-	float2 curpos = points[index].pos, prevpos = points[index].prev_pos;
-	points[index].pos += (curpos - prevpos) + (float2)(0, 0.003f); // gravity
+	float2 curpos = points[index].pos;
+	float2 prevpos = points[index].prev_pos;
+	points[index].pos += (curpos - prevpos) + gravity;
 
 	points[index].prev_pos = curpos;
 
@@ -53,6 +56,7 @@ __kernel void constraints(__global Point* points, int i, int even)
 
 	int neighbor_index = x + xoffset[i] + (y + yoffset[i]) * GRIDSIZE;
 	Point neighbor = points[neighbor_index];
+
 	float2 diff = neighbor.pos - points[index].pos;
 	float distance = length(diff);
 
