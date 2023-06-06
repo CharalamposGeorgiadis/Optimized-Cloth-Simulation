@@ -48,24 +48,20 @@ __kernel void constraints(__global Point* points, int i, int even)
 	const int y = p / (GRIDSIZE - 2) + 1; 
 	const int index = x + y * GRIDSIZE;
 
-	bool isEven = (index % 2 == 0);
-	if (even == 0 && !isEven)
-        return;
-    if (even == 1 && isEven)
+	if (index % 2 == even)
         return;
 
 	int neighbor_index = x + xoffset[i] + (y + yoffset[i]) * GRIDSIZE;
 	Point neighbor = points[neighbor_index];
-	float distance = length(neighbor.pos - points[index].pos);
+	float2 diff = neighbor.pos - points[index].pos;
+	float distance = length(diff);
 
 	int if_1 = (int)isfinite(distance);
 
 	if (distance > points[index].restlength[i])
 	{
 		float extra = distance / points[index].restlength[i] - 1;
-		float2 dir = neighbor.pos - points[index].pos;
-
-		float2 mult = if_1 * extra * dir * 0.5f;
+		float2 mult = if_1 * extra * diff * 0.5f;
 
 		points[index].pos += mult;
 		points[neighbor_index].pos -= mult;
