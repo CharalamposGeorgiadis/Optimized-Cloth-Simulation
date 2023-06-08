@@ -141,7 +141,6 @@ void Game::Simulation()
 {
 	clEnqueueWriteBuffer(queue, *(buffer->GetDevicePtr()), CL_TRUE, 0, GRIDSIZE * GRIDSIZE * sizeof(Point), pointGrid, 0, nullptr, nullptr);
 
-	kernel_constraints->SetArguments(buffer);
 	kernel_fix->SetArguments(buffer);
 
 	// simulation is exected three times per frame; do not change this.
