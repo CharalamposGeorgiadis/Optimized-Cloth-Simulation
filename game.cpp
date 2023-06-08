@@ -191,6 +191,7 @@ void Game::Simulation()
 		}
 	}
 	buffer->CopyFromDevice();
+	
 }
 
 
