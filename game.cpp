@@ -40,7 +40,6 @@ struct Point
 	float2 pos;				// current position of the point
 	float2 prev_pos;		// position of the point in the previous frame
 	float2 fix;				// stationary position; used for the top line of points
-	bool fixed;				// true if this is a point in the top line of the cloth
 	float restlength[4];	// initial distance to neighbours
 };
 
@@ -90,13 +89,10 @@ void Game::Init()
 			grid(x, y).prev_pos = grid(x, y).pos; // all points start stationary
 			if (y == 0)
 			{
-				grid(x, y).fixed = true;
+
 				grid(x, y).fix = grid(x, y).pos;
 			}
-			else
-			{
-				grid(x, y).fixed = false;
-			}
+
 		}
 	for (int y = 1; y < GRIDSIZE - 1; y++) 
 		for (int x = 1; x < GRIDSIZE - 1; x++)

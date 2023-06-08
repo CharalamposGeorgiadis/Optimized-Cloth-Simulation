@@ -8,7 +8,6 @@ typedef struct Point
     float2 pos;
     float2 prev_pos;
     float2 fix;
-    bool fixed; 
     float restlength[4];
 } Point;
 
