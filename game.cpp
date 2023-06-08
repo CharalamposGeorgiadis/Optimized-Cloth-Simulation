@@ -141,31 +141,6 @@ void Game::Init()
 				}
 			}
 		}
-
-	// create the cloth
-	//for (int y = 0; y < GRIDSIZE; y++) for (int x = 0; x < GRIDSIZE; x++)
-	//{
-	//	grid( x, y ).pos.x = 10 + (float)x * ((SCRWIDTH - 100) / GRIDSIZE) + y * 0.9f + Rand( 2 );
-	//	grid( x, y ).pos.y = 10 + (float)y * ((SCRHEIGHT - 180) / GRIDSIZE) + Rand( 2 );
-	//	grid( x, y ).prev_pos = grid( x, y ).pos; // all points start stationary
-	//	if (y == 0)
-	//	{
-	//		grid( x, y ).fixed = true;
-	//		grid( x, y ).fix = grid( x, y ).pos;
-	//	}
-	//	else
-	//	{
-	//		grid( x, y ).fixed = false;
-	//	}
-	//}
-	//for (int y = 1; y < GRIDSIZE - 1; y++) for (int x = 1; x < GRIDSIZE - 1; x++)
-	//{
-	//	// calculate and store distance to four neighbours, allow 15% slack
-	//	for (int c = 0; c < 4; c++)
-	//	{
-	//		grid( x, y ).restlength[c] = length( grid( x, y ).pos - grid( x + xoffset[c], y + yoffset[c] ).pos ) * 1.15f;
-	//	}
-	//}
 }
 
 // cloth rendering
@@ -176,20 +151,6 @@ void Game::DrawGrid()
 {
 	// draw the grid
 	screen->Clear(0);
-	//for (int y = 0; y < (GRIDSIZE - 1); y++) for (int x = 1; x < (GRIDSIZE - 2); x++)
-	//{
-	//	const float2 p1 = grid(x, y).pos;
-	//	const float2 p2 = grid(x + 1, y).pos;
-	//	const float2 p3 = grid(x, y + 1).pos;
-	//	screen->Line(p1.x, p1.y, p2.x, p2.y, 0xffffff);
-	//	screen->Line(p1.x, p1.y, p3.x, p3.y, 0xffffff);
-	//}
-	//for (int y = 0; y < (GRIDSIZE - 1); y++)
-	//{
-	//	const float2 p1 = grid(GRIDSIZE - 2, y).pos;
-	//	const float2 p2 = grid(GRIDSIZE - 2, y + 1).pos;
-	//	screen->Line(p1.x, p1.y, p2.x, p2.y, 0xffffff);
-	//}
 
 	for (int y = 0; y < (GRIDSIZE - 1); y++)
 		for (int x = 1; x < (GRIDSIZE - 2); x++)
@@ -230,7 +191,6 @@ void Game::DrawGrid()
 // when using SIMD, this will only work if the two vertices are not
 // operated upon simultaneously (in a vector register, or in a warp).
 float magic = 0.11f;
-__m256 zero = _mm256_setzero_ps();
 __m256 intmax = _mm256_set1_ps(INT_MAX);
 
 __m256 Rand8(float max_range) {
@@ -240,38 +200,118 @@ __m256 Rand8(float max_range) {
 	return _mm256_mul_ps(random_float, _mm256_set1_ps(max_range));
 }
 
-//__m256 Rand8(float max_range) {
-//	// Generate 8 random numbers using rand and scale them to the range [0, max_range]
-//	float rand_nums[8] = {
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range),
-//		Rand(max_range)
-//	};
-//
-//	return _mm256_loadu_ps(rand_nums);
-//}
-
 __m256 gravity = _mm256_set1_ps(0.003f);
+__m256 zero = _mm256_setzero_ps();
 __m256 one = _mm256_set1_ps(1);
 __m256 zero_point_five = _mm256_set1_ps(0.5f);
 __m256 infinite = _mm256_set1_ps(INFINITY);
 __m256 zero_point_3 = _mm256_set1_ps(0.03f);
 
+
+// Updates points and dependent neighbhors
+void update_dependent_neighbors(float* restlengthList, int linknr, __m256i indices, __m256& pointpos_x, __m256& pointpos_y)
+{
+	// Calculate neighbour indices
+	__m256i neighbourIndices = _mm256_add_epi32(indices, _mm256_set1_epi32(xoffset[linknr] + yoffset[linknr] * GRIDSIZE));
+
+	// Load neighbour positions
+	__m256 neighbourPosX = _mm256_i32gather_ps(points.pos_x, neighbourIndices, 4);
+	__m256 neighbourPosY = _mm256_i32gather_ps(points.pos_y, neighbourIndices, 4);
+
+	// Calculate dx, dy, and distance
+	__m256 dx = _mm256_sub_ps(neighbourPosX, pointpos_x);
+	__m256 dy = _mm256_sub_ps(neighbourPosY, pointpos_y);
+	__m256 distance = _mm256_sqrt_ps(_mm256_add_ps(_mm256_mul_ps(dx, dx), _mm256_mul_ps(dy, dy)));
+
+	// Create a mask that has true where distance is finite
+	__m256 not_inf_mask = _mm256_and_ps(_mm256_cmp_ps(distance, distance, _CMP_EQ_OQ), _mm256_cmp_ps(distance, infinite, _CMP_NEQ_OQ));
+
+	// Load restlength
+	__m256 restlength = _mm256_i32gather_ps(restlengthList, indices, 4);
+
+	// Calculate condition mask (distance > restlength)
+	__m256 mask = _mm256_cmp_ps(distance, restlength, _CMP_GT_OQ);
+
+	// Calculate extra, dir_x, dir_y, and updates
+	__m256 extra = _mm256_sub_ps(_mm256_div_ps(distance, restlength), one);
+	extra = _mm256_and_ps(_mm256_sub_ps(_mm256_div_ps(distance, restlength), one), mask); // Set extra to 0 where condition is false
+
+	__m256 update = _mm256_mul_ps(_mm256_and_ps(_mm256_sub_ps(_mm256_div_ps(distance, restlength), one), mask), zero_point_five);
+
+	pointpos_x = _mm256_blendv_ps(pointpos_x, _mm256_add_ps(pointpos_x, _mm256_mul_ps(update, dx)), not_inf_mask);
+	pointpos_y = _mm256_blendv_ps(pointpos_y, _mm256_add_ps(pointpos_y, _mm256_mul_ps(update, dy)), not_inf_mask);
+
+	// Subtract from neighbour positions
+	neighbourPosX = _mm256_blendv_ps(neighbourPosX, _mm256_sub_ps(neighbourPosX, _mm256_mul_ps(update, dx)), not_inf_mask);
+	neighbourPosY = _mm256_blendv_ps(neighbourPosY, _mm256_sub_ps(neighbourPosY, _mm256_mul_ps(update, dy)), not_inf_mask);
+
+	// Scatter updated positions
+	for (int i = 0; i < 8; i++)
+	{
+		points.pos_x[indices.m256i_i32[i]] = ((float*)&pointpos_x)[i];
+		points.pos_y[indices.m256i_i32[i]] = ((float*)&pointpos_y)[i];
+		points.pos_x[neighbourIndices.m256i_i32[i]] = ((float*)&neighbourPosX)[i];
+		points.pos_y[neighbourIndices.m256i_i32[i]] = ((float*)&neighbourPosY)[i];
+	}
+}
+
+// Updates points and non-dependent neighbhors
+void update_non_dependent_neighbors(float* restlengthList, int linknr, int x, int y)
+{
+	// Calculate indices for point positions
+	int index = x + y * GRIDSIZE;
+
+	// Load point positions
+	__m256 pointpos_x = _mm256_loadu_ps(&points.pos_x[index]);
+	__m256 pointpos_y = _mm256_loadu_ps(&points.pos_y[index]);
+
+	// Calculate neighbour index
+	int neighbourIndex = index + xoffset[linknr] + yoffset[linknr] * GRIDSIZE;
+
+	// Load neighbour positions
+	__m256 neighbourPosX = _mm256_loadu_ps(&points.pos_x[neighbourIndex]);
+	__m256 neighbourPosY = _mm256_loadu_ps(&points.pos_y[neighbourIndex]);
+
+	// Calculate dx, dy, and distance
+	__m256 dx = _mm256_sub_ps(neighbourPosX, pointpos_x);
+	__m256 dy = _mm256_sub_ps(neighbourPosY, pointpos_y);
+	__m256 distance = _mm256_sqrt_ps(_mm256_add_ps(_mm256_mul_ps(dx, dx), _mm256_mul_ps(dy, dy)));
+
+	// Create a mask that has true where distance is finite
+	__m256 not_inf_mask = _mm256_and_ps(_mm256_cmp_ps(distance, distance, _CMP_EQ_OQ), _mm256_cmp_ps(distance, infinite, _CMP_NEQ_OQ));
+
+	// Load restlength
+	__m256 restlength = _mm256_loadu_ps(&restlengthList[index]);
+
+	// Calculate condition mask (distance > restlength)
+	__m256 mask = _mm256_cmp_ps(distance, restlength, _CMP_GT_OQ);
+
+	// Calculate extra, dir_x, dir_y, and updates
+	__m256 extra = _mm256_sub_ps(_mm256_div_ps(distance, restlength), one);
+	extra = _mm256_and_ps(extra, mask); // Set extra to 0 where condition is false
+
+	__m256 update = _mm256_mul_ps(extra, zero_point_five);
+
+	// Apply finite masks to point positions
+	pointpos_x = _mm256_blendv_ps(pointpos_x, _mm256_add_ps(pointpos_x, _mm256_mul_ps(update, dx)), not_inf_mask);
+	pointpos_y = _mm256_blendv_ps(pointpos_y, _mm256_add_ps(pointpos_y, _mm256_mul_ps(update, dy)), not_inf_mask);
+
+	// Subtract from neighbour positions
+	neighbourPosX = _mm256_blendv_ps(neighbourPosX, _mm256_sub_ps(neighbourPosX, _mm256_mul_ps(update, dx)), not_inf_mask);
+	neighbourPosY = _mm256_blendv_ps(neighbourPosY, _mm256_sub_ps(neighbourPosY, _mm256_mul_ps(update, dy)), not_inf_mask);
+
+	// Store updated positions
+	_mm256_storeu_ps(&points.pos_x[index], pointpos_x);
+	_mm256_storeu_ps(&points.pos_y[index], pointpos_y);
+	_mm256_storeu_ps(&points.pos_x[neighbourIndex], neighbourPosX);
+	_mm256_storeu_ps(&points.pos_y[neighbourIndex], neighbourPosY);
+}
+
 void Game::Simulation()
 {
-
-
-	/*avx_xorshift128plus_init(Rand(1000), Rand(10000), &mykey);*/ // values 324, 4444 are arbitrary, must be non-zero
-
 	// simulation is exected three times per frame; do not change this.
 	for (int steps = 0; steps < 3; steps++)
 	{
-
 		for (int y = 0; y < GRIDSIZE; y++)
 			for (int x = 0; x < GRIDSIZE; x += 8)
 			{
@@ -288,7 +328,6 @@ void Game::Simulation()
 				_mm256_storeu_ps(&points.prev_pos_x[index], curpos_x);
 				_mm256_storeu_ps(&points.prev_pos_y[index], curpos_y);
 
-
 				__m256 mask = _mm256_cmp_ps(Rand8(10), zero_point_3, _CMP_LT_OQ);
 
 				__m256 impx = _mm256_blendv_ps(zero, Rand8(0.02f + magic), mask);
@@ -301,8 +340,6 @@ void Game::Simulation()
 				_mm256_storeu_ps(&points.pos_y[index], newpos_y);
 			}
 
-
-
 		magic += 0.0002f; // slowly increases the chance of anomalies
 		// apply constraints; 4 simulation steps: do not change this number.
 
@@ -312,7 +349,7 @@ void Game::Simulation()
 				{
 					__m256i ymask = _mm256_set1_epi32(y * GRIDSIZE);
 
-					//Dependent neighbhors, skip indices and use gather to avoid concurrency issues. 
+					// Dependent neighbhors, skip indices and use gather to avoid concurrency issues. 
 					for (int checker = 0; checker < 2; checker++)
 					{
 						for (int x = 1 + checker; x < GRIDSIZE - 1; x += 16) // Two passes over the data, offset by 1 on the second pass
@@ -320,166 +357,40 @@ void Game::Simulation()
 							// Create indices for SIMD gather
 							__m256i indices = _mm256_setr_epi32(x, x + 2, x + 4, x + 6, x + 8, x + 10, x + 12, x + 14);
 
-							indices = _mm256_add_epi32(indices,ymask);
+							indices = _mm256_add_epi32(indices, ymask);
 
 							// Load point positions
 							__m256 pointpos_x = _mm256_i32gather_ps(points.pos_x, indices, 4);
 							__m256 pointpos_y = _mm256_i32gather_ps(points.pos_y, indices, 4);
 
-							for (int linknr = 0; linknr < 2; linknr++)
-							{
+							update_dependent_neighbors(points.restlength0, 0, indices, pointpos_x, pointpos_y);
 
-								float* restlengthList;
-								switch (linknr) {
-								case 0:
-									restlengthList = points.restlength0;
-									break;
-								case 1:
-									restlengthList = points.restlength1;
-									break;
-								case 2:
-									restlengthList = points.restlength2;
-									break;
-								case 3:
-									restlengthList = points.restlength3;
-									break;
-								}
-
-								// Calculate neighbour indices
-								__m256i neighbourIndices = _mm256_add_epi32(indices, _mm256_set1_epi32(xoffset[linknr] + yoffset[linknr] * GRIDSIZE));
-
-								// Load neighbour positions
-								__m256 neighbourPosX = _mm256_i32gather_ps(points.pos_x, neighbourIndices, 4);
-								__m256 neighbourPosY = _mm256_i32gather_ps(points.pos_y, neighbourIndices, 4);
-
-								// Calculate dx, dy, and distance
-								__m256 dx = _mm256_sub_ps(neighbourPosX, pointpos_x);
-								__m256 dy = _mm256_sub_ps(neighbourPosY, pointpos_y);
-								__m256 distance = _mm256_sqrt_ps(_mm256_add_ps(_mm256_mul_ps(dx, dx), _mm256_mul_ps(dy, dy)));
-
-								// Create a mask that has true where distance is finite
-								__m256 not_inf_mask = _mm256_and_ps(_mm256_cmp_ps(distance, distance, _CMP_EQ_OQ), _mm256_cmp_ps(distance, infinite, _CMP_NEQ_OQ));
-
-								// Load restlength
-								__m256 restlength = _mm256_i32gather_ps(restlengthList, indices, 4);
-
-								// Calculate condition mask (distance > restlength)
-								__m256 mask = _mm256_cmp_ps(distance, restlength, _CMP_GT_OQ);
-
-								// Calculate extra, dir_x, dir_y, and updates
-								__m256 extra = _mm256_sub_ps(_mm256_div_ps(distance, restlength), one);
-								extra = _mm256_and_ps(extra, mask); // Set extra to 0 where condition is false
-								__m256 dir_x = dx, dir_y = dy;
-								__m256 update = _mm256_mul_ps(extra, zero_point_five);
-								pointpos_x = _mm256_blendv_ps(pointpos_x, _mm256_add_ps(pointpos_x, _mm256_mul_ps(update, dir_x)), not_inf_mask);
-								pointpos_y = _mm256_blendv_ps(pointpos_y, _mm256_add_ps(pointpos_y, _mm256_mul_ps(update, dir_y)), not_inf_mask);
-
-								// Subtract from neighbour positions
-								neighbourPosX = _mm256_blendv_ps(neighbourPosX, _mm256_sub_ps(neighbourPosX, _mm256_mul_ps(update, dir_x)), not_inf_mask);
-								neighbourPosY = _mm256_blendv_ps(neighbourPosY, _mm256_sub_ps(neighbourPosY, _mm256_mul_ps(update, dir_y)), not_inf_mask);
-
-								// Scatter updated positions
-								for (int i = 0; i < 8; i++) {
-									points.pos_x[indices.m256i_i32[i]] = ((float*)&pointpos_x)[i];
-									points.pos_y[indices.m256i_i32[i]] = ((float*)&pointpos_y)[i];
-									points.pos_x[neighbourIndices.m256i_i32[i]] = ((float*)&neighbourPosX)[i];
-									points.pos_y[neighbourIndices.m256i_i32[i]] = ((float*)&neighbourPosY)[i];
-								}
-							}
+							update_dependent_neighbors(points.restlength1, 1, indices, pointpos_x, pointpos_y);
 						}
-					}
-				
+					}			
 					// Independent neighbhors, no need to use gather, or skip indices
 					for (int x = 1; x < GRIDSIZE - 1; x += 8)
 					{
+						update_non_dependent_neighbors(points.restlength2, 2, x, y);
 
-						for (int linknr = 2; linknr < 4; linknr++)
-						{
-
-							float* restlengthList;
-							switch (linknr) {
-							case 0:
-								restlengthList = points.restlength0;
-								break;
-							case 1:
-								restlengthList = points.restlength1;
-								break;
-							case 2:
-								restlengthList = points.restlength2;
-								break;
-							case 3:
-								restlengthList = points.restlength3;
-								break;
-							}
-							// Calculate indices for point positions
-							int index = x + y * GRIDSIZE;
-
-							// Load point positions
-							__m256 pointpos_x = _mm256_loadu_ps(&points.pos_x[index]);
-							__m256 pointpos_y = _mm256_loadu_ps(&points.pos_y[index]);
-
-							// Calculate neighbour index
-							int neighbourIndex = index + xoffset[linknr] + yoffset[linknr] * GRIDSIZE;
-
-							// Load neighbour positions
-							__m256 neighbourPosX = _mm256_loadu_ps(&points.pos_x[neighbourIndex]);
-							__m256 neighbourPosY = _mm256_loadu_ps(&points.pos_y[neighbourIndex]);
-
-
-							// Calculate dx, dy, and distance
-							__m256 dx = _mm256_sub_ps(neighbourPosX, pointpos_x);
-							__m256 dy = _mm256_sub_ps(neighbourPosY, pointpos_y);
-							__m256 distance = _mm256_sqrt_ps(_mm256_add_ps(_mm256_mul_ps(dx, dx), _mm256_mul_ps(dy, dy)));
-
-							// Create a mask that has true where distance is finite
-							__m256 not_inf_mask = _mm256_and_ps(_mm256_cmp_ps(distance, distance, _CMP_EQ_OQ), _mm256_cmp_ps(distance, infinite, _CMP_NEQ_OQ));
-
-							// Load restlength
-							__m256 restlength = _mm256_loadu_ps(&restlengthList[index]);
-
-							// Calculate condition mask (distance > restlength)
-							__m256 mask = _mm256_cmp_ps(distance, restlength, _CMP_GT_OQ);
-
-							// Calculate extra, dir_x, dir_y, and updates
-							__m256 extra = _mm256_sub_ps(_mm256_div_ps(distance, restlength), one);
-							extra = _mm256_and_ps(extra, mask); // Set extra to 0 where condition is false
-							__m256 dir_x = dx, dir_y = dy;
-							__m256 update = _mm256_mul_ps(extra, zero_point_five);
-
-							// Apply finite masks to point positions
-							pointpos_x = _mm256_blendv_ps(pointpos_x, _mm256_add_ps(pointpos_x, _mm256_mul_ps(update, dir_x)), not_inf_mask);
-							pointpos_y = _mm256_blendv_ps(pointpos_y, _mm256_add_ps(pointpos_y, _mm256_mul_ps(update, dir_y)), not_inf_mask);
-
-							// Subtract from neighbour positions
-							neighbourPosX = _mm256_blendv_ps(neighbourPosX, _mm256_sub_ps(neighbourPosX, _mm256_mul_ps(update, dir_x)), not_inf_mask);
-							neighbourPosY = _mm256_blendv_ps(neighbourPosY, _mm256_sub_ps(neighbourPosY, _mm256_mul_ps(update, dir_y)), not_inf_mask);
-
-							// Store updated positions
-							_mm256_storeu_ps(&points.pos_x[index], pointpos_x);
-							_mm256_storeu_ps(&points.pos_y[index], pointpos_y);
-							_mm256_storeu_ps(&points.pos_x[neighbourIndex], neighbourPosX);
-							_mm256_storeu_ps(&points.pos_y[neighbourIndex], neighbourPosY);
-						}
-					}		
-				
+						update_non_dependent_neighbors(points.restlength3, 3, x, y);
+					}					
 				}
 
-
-				for (int x = 0; x < GRIDSIZE; x += 8) {
+				for (int x = 0; x < GRIDSIZE; x += 8) 
+				{
 					__m256 fix_x = _mm256_loadu_ps(&points.fix_x[x]);
 					__m256 fix_y = _mm256_loadu_ps(&points.fix_y[x]);
 
 					_mm256_storeu_ps(&points.pos_x[x], fix_x);
 					_mm256_storeu_ps(&points.pos_y[x], fix_y);
-				}
-			
+				}			
 		}
 	}
 }
 
 void Game::Tick(float a_DT)
 {
-
 	// update the simulation
 	Timer tm;
 	tm.reset();
